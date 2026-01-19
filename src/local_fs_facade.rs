@@ -34,4 +34,12 @@ impl StorageFacade for LocalFsFacade {
     fn copy_file(&self, from: &str, to: &str) -> Result<(), Box<dyn std::error::Error>> {
         todo!()
     }
+    
+    fn get_file_metadata(&self, path: &str) -> Result<std::fs::Metadata, Box<dyn std::error::Error>> {
+        todo!()
+    }
+    
+    fn file_exists(&self, path: &str) -> bool {
+        todo!()
+    }
 }

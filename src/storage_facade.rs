@@ -1,5 +1,8 @@
 use std::error::Error;
+use std::fs;
 
+
+/// Required trait for modules used to read and write directly to long term storage
 pub trait StorageFacade {
     fn read_data<F>(&self, path: &str, decrypt: Option<F>) -> Result<Vec<u8>, Box<dyn Error>>
     where
@@ -18,4 +21,8 @@ pub trait StorageFacade {
     fn move_file(&self, from: &str, to: &str) -> Result<(), Box<dyn Error>>;
 
     fn copy_file(&self, from: &str, to: &str) -> Result<(), Box<dyn Error>>;
+
+    fn get_file_metadata(&self, path: &str) -> Result<fs::Metadata, Box<dyn Error>>;
+
+    fn file_exists(&self, path: &str) -> bool;
 }
