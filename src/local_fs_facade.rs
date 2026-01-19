@@ -1,10 +1,8 @@
 use crate::storage_facade::{self, StorageFacade};
-use aws_sdk_s3 as s3;
-use aws_config;
 
-pub struct S3Facade;
+struct LocalFsFacade;
 
-impl StorageFacade for  S3Facade {
+impl StorageFacade for LocalFsFacade {
     fn read_data<F>(&self, path: &str, decrypt: Option<F>) -> Result<Vec<u8>, Box<dyn std::error::Error>>
     where
         F: Fn(&[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
