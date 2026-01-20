@@ -1,8 +1,19 @@
 use crate::storage_facade::{self, StorageFacade};
 use aws_sdk_s3 as s3;
-use aws_config;
 
-pub struct S3Facade;
+pub struct S3Facade {
+    client: s3::Client
+}
+
+impl S3Facade {
+    pub async fn new(config: s3::config::Config) -> Self {
+        let client = s3::Client::from_conf(config);
+        
+        S3Facade { 
+            client 
+        }
+    }
+}
 
 impl StorageFacade for  S3Facade {
     fn read_data<F>(&self, path: &str, decrypt: Option<F>) -> Result<Vec<u8>, Box<dyn std::error::Error>>
