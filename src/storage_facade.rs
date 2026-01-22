@@ -1,13 +1,31 @@
+// Contains abstractions for the calling layer to interface with any supported storage backend
+// More to follow ...
+
 use std::error::Error;
 use std::fs;
-use std::time::SystemTime;
-use std::path;
+use std::path::PathBuf;
+
+/// Identifies the data store by backend type and ID / Location
+/// 
+/// Pattern matching prevents the need for checking string formats before accidentally parsing the wrong type
+/// All types that are stored in this enum should be able to be stored and read by tools from the standard library or prelude
+/// So parts of the program who haven't a clue what s3 is should be able to send it to methods that do.
+pub enum DataStoreId {
+    S3(String),
+    Local(PathBuf),
+}
+
+/// Common metadata for any storage backend
+/// 
+/// It's not mandatory to use this in your backend implementations, though you'll be bullied if you don't :D
+/// Metadata should be a public field which higher level layers can use to identify and distinguish different storage backends
+pub struct StoreMetadata {
+    pub id: DataStoreId,
+    pub name: String,
+    pub description: Option<String>,
+}
 
 /// Required trait for modules used to read and write directly to long term storage
-/// 
-/// There are some areas in which facades will differ; for example, buckets do not require directory creation,
-/// and local filesystems do. In cases like this, methods such as `move_file(&self, from: &str, to: &str) -> Result<(), Box<dyn Error>>`
-/// should be the public method, with calls to private functions to check directories exist and create them if not.
 pub trait StorageFacade {
     /// Reads binary data from a file at a path, optionally takes a decryption function.
     async fn read_data<F>(&self, path: &str, decrypt: Option<F>) -> Result<Vec<u8>, Box<dyn Error>>
