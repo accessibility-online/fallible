@@ -8,9 +8,10 @@ use std::path::PathBuf;
 
 /// Identifies the data store by backend type and ID / Location
 /// 
-/// Pattern matching prevents the need for checking string formats before accidentally parsing the wrong type
+/// Each case corresponds to a supported backend type, and the associated value is a system specific ID for a datastore on that backend.
+/// This helps the calling layer know if it's dealing with an ARN, a local filesystem path or an Azure Blob URL, without implementing any logic beyond pattern matching the case.
 /// All types that are stored in this enum should be able to be stored and read by tools from the standard library or prelude
-/// So parts of the program who haven't a clue what s3 is should be able to send it to methods that do.
+/// So parts of the program who haven't a clue what s3 is should be able to send it to methods that do, saving everyone a headache and halving the coffee budget.
 pub enum DataStoreId {
     S3(String),
     Local(PathBuf),
@@ -18,8 +19,10 @@ pub enum DataStoreId {
 
 /// Common metadata for any storage backend
 /// 
-/// It's not mandatory to use this in your backend implementations, though you'll be bullied if you don't :D
-/// Metadata should be a public field which higher level layers can use to identify and distinguish different storage backends
+/// Note, cargo will bully you if you don't include one of these in your structs.
+/// Higher level libraries should be able to use this data to distinguish between different stoarage backends instantiated in code, without worrying about how to perform platform specific operations.
+/// think "Put this in the s3" or "Move this file from S3 to Wasabi"
+/// This type is returned by the `metadata(&self) -> &storeMetadata` function, so callers can even use this on collections stored on the heap
 pub struct StoreMetadata {
     pub id: DataStoreId,
     pub name: String,
@@ -58,4 +61,7 @@ pub trait StorageFacade {
 
     /// Checks if a file exists at a given path, cannot be used for directories
     fn file_exists(&self, path: &str) -> impl Future<Output = bool> + Send;
+
+    /// Returns a reference to the metadata field of the struct
+    fn metadata(&self) -> &StoreMetadata;
 }
