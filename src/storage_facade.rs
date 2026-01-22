@@ -20,7 +20,7 @@ pub enum DataStoreId {
 /// Common metadata for any storage backend
 /// 
 /// Note, cargo will bully you if you don't include one of these in your structs.
-/// Higher level libraries should be able to use this data to distinguish between different stoarage backends instantiated in code, without worrying about how to perform platform specific operations.
+/// Higher level libraries should be able to use this data to distinguish between different storage backends instantiated in code, without worrying about how to perform platform specific operations.
 /// think "Put this in the s3" or "Move this file from S3 to Wasabi"
 /// This type is returned by the `metadata(&self) -> &storeMetadata` function, so callers can even use this on collections stored on the heap
 pub struct StoreMetadata {
