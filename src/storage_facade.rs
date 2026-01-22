@@ -1,18 +1,13 @@
 use std::error::Error;
 use std::fs;
+use std::time::SystemTime;
+use std::path;
 
 /// Required trait for modules used to read and write directly to long term storage
 /// 
-/// This trait outlines the common headers to be shared between different storage facade modules.
-/// The general idea being that if you use any of these methods, and avoid using module specific methods where possible, migrating a storage service will be as simple as switching module names.
-/// 
-/// There are Some areas in which facades will differ, for example buckets do not require directory creation, and local filesystems do. 
-/// In cases like this, methods such as `move_file(&self, from: &str, to: &str) -> Result<(), Box<dyn Error>>`  should be the public method, with calls to private functions to check directories exist, and create them if not.
-/// 
-/// All functions defined here should return a Result<> object with a type or () as the OK value, and a generic error type using Box as the Err value.
-/// This is to reduce SDK dependence for proprietary code, and to reduce complexity for implementation of business logic.
-/// 
-/// Likewise, where OK values are defined, Standard Library return types are prefered, unless absolutely necessary.
+/// There are some areas in which facades will differ; for example, buckets do not require directory creation,
+/// and local filesystems do. In cases like this, methods such as `move_file(&self, from: &str, to: &str) -> Result<(), Box<dyn Error>>`
+/// should be the public method, with calls to private functions to check directories exist and create them if not.
 pub trait StorageFacade {
     /// Reads binary data from a file at a path, optionally takes a decryption function.
     async fn read_data<F>(&self, path: &str, decrypt: Option<F>) -> Result<Vec<u8>, Box<dyn Error>>
