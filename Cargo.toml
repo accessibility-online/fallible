@@ -1,7 +1,11 @@
+
 [package]
 name = "raise-data"
 version = "0.1.0"
 edition = "2024"
+
+[lib]
+crate-type = ["rlib", "cdylib"]
 
 [dependencies]
 aws-config = "1.8.12"
