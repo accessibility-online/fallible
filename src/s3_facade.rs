@@ -1,10 +1,20 @@
-// Provides abstractions for calling layers to interface with AWS s3
+// Provides abstractions for managing data in S3 Buckets
 //
-// More to follow
-use std::error::Error;
+// This module provides abstractions for working with data in S3 buckets directly.
+// It conforms to the [`StorageFacade`] trait, and use of the trait methods above any module specific implementations is heavily encurraged, see below.
+// 
+// **NOTE:** This module assumes you have preexisting AWS assets, either via IAC or through manual creation.
+// While facades working on more traditional filesystems may be able to create their silos automatically, we liken the creation or distruction of a bucket in a similar light to creating or destroying a server.
+// Plus, there are additional considerations around bucket creation, such as public access blocks, policies around IAM access, and other details far beyond the scope of a module designed to abstract the storage and retrieval of data.
+// 
+// Where this module takes advantage of S3 specific features, it either does so within the bodies of public methods, or abstracts calls into private methods.
+// The idea being that if we use an S3 specific feature, it should be part of a process that can be considered agnostic to all structs which implement the StorageFacade trait.
+// for example, methods checking storage class of a file, and potentially triggering a move from deep archive to instant access, should be called as part of a process within a public method.
+// This way, callers don't need to care about or work with the platform specific features of each data store, but can implement high level instructions which will take advantage of them if required.
 use crate::storage_facade::{DataStoreId, StorageFacade, StoreMetadata};
 use aws_config as aws;
-use aws_sdk_s3::{self as s3};
+use aws_sdk_s3::{self as s3, primitives::ByteStream};
+use std::error::Error;
 
 /// Contains the client and metadata as fields
 pub struct S3Facade {
@@ -14,24 +24,41 @@ pub struct S3Facade {
 
 impl S3Facade {
     /// Constructor with bucket exists logic
-    /// 
+    ///
     /// This constructor returns the S3Facade struct if the name argument matches the name of an existing s3 bucket.
-    /// the head_bucket method provides a lightweight request returning bucket information from the name, and is used as a standard way to check existance and authorisation.
-    /// Handily, it also returns data which is used to populate the metadata fields of the struct, such as id.
+    /// We use head_bucket() as a lightweight call to check for bucket existance.
+    /// If the bucket exists, we return an S3Facade struct containing metadata useful to the calling layer. If not, we return an error, and will log specifics from here.
+    /// In all cases, we want to return an arn for the bucket as part of the metadata, even if one is not provided by the sdk. This is because AWS is known to use bucket names and arns for different purposes, and we want to cover all bases.
+    /// If the SDK is unable to return the ARN automatically, we construct it using String::format();
     pub async fn new(name: &str, description: &str) -> Result<Self, Box<dyn Error>> {
         let config = aws::load_defaults(aws::BehaviorVersion::v2026_01_12()).await;
         let client = s3::Client::new(&config);
 
         let request = client.head_bucket().bucket(name).send().await;
 
-        Ok(S3Facade {
-            client,
-            metadata: StoreMetadata {
-                id: DataStoreId::S3("".to_string()),
-                name: name.to_string(),
-                description: Some(description.to_string()),
-            },
-        })
+        match request {
+            Err(e) => {
+                // Logging logic goes here
+                return Err(e.into());
+            }
+            Ok(result) => {
+                let arn = result
+                    .bucket_arn()
+                    .map(String::from)
+                    .unwrap_or_else(|| format!("arn:aws:s3:::{}", name));
+
+                let facade = S3Facade {
+                    client,
+                    metadata: StoreMetadata {
+                        id: DataStoreId::S3(arn),
+                        name: name.to_string(),
+                        description: description.to_string()
+                    },
+                };
+
+                Ok(facade)
+            }
+        }
     }
 }
 
@@ -71,14 +98,28 @@ impl StorageFacade for S3Facade {
     where
         F: Fn(&[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> + Send + Sync,
     {
-        todo!()
+        let upload = self
+            .client
+            .put_object()
+            .bucket(&self.metadata.name)
+            .key(path)
+            .body(ByteStream::from(data.to_vec()))
+            .send()
+            .await;
+
+        if let Err(e) = upload {
+            // ToDo put some error logging code here with traceing
+            return Err(e.into());
+        }
+
+        Ok(())
     }
 
     async fn list_objects(
         &self,
         dir_path: &str,
     ) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
-        todo!()
+todo!()
     }
 
     async fn list_object_versions(

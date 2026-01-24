@@ -23,10 +23,15 @@ pub enum DataStoreId {
 /// Higher level libraries should be able to use this data to distinguish between different storage backends instantiated in code, without worrying about how to perform platform specific operations.
 /// think "Put this in the s3" or "Move this file from S3 to Wasabi"
 /// This type is returned by the `metadata(&self) -> &storeMetadata` function, so callers can even use this on collections stored on the heap
+/// 
+/// # Parameters:
+/// * id: Platform specific ID, EG ARN, Azure Blob storage url or B2 ID. In cases of a local FS, this should be a filepath to the root directory of the data store.
+/// * name: Name of the data store. In the case of bucket storage, the name of the bucket. In the case of local fs facades, this should be the name of the data store directory.
+/// *  description: What is this store for, or why does it need to exist. We've elected to make this mandatory for better oversight and auditability.
 pub struct StoreMetadata {
     pub id: DataStoreId,
     pub name: String,
-    pub description: Option<String>,
+    pub description: String,
 }
 
 /// Required trait for modules used to read and write directly to long term storage
