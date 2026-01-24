@@ -10,3 +10,4 @@ crate-type = ["rlib", "cdylib"]
 [dependencies]
 aws-config = "1.8.12"
 aws-sdk-s3 = "1.120.0"
+tracing = "0.1.44"

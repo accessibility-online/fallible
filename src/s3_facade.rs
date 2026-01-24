@@ -4,7 +4,7 @@
 use std::error::Error;
 use crate::storage_facade::{DataStoreId, StorageFacade, StoreMetadata};
 use aws_config as aws;
-use aws_sdk_s3::{self as s3, Config};
+use aws_sdk_s3::{self as s3};
 
 /// Contains the client and metadata as fields
 pub struct S3Facade {
