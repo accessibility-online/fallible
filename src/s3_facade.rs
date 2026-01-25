@@ -63,6 +63,17 @@ impl S3Facade {
 }
 
 impl StorageFacade for S3Facade {
+    /// Reads binary data from a file in an S3 Bucket
+    /// 
+    /// # Remarks
+    /// Designed to read files from an s3 bucket and return raw binary data. This can be used on larger files, though it will block the thread until the file is read.
+    /// We intend to implement streaming functions for larger files measured in GBs and TBs, after which a size limit will be imposed on the use of this function.
+    /// 
+    /// # Arguments
+    /// * `path` - the path of the file to read, using forward slash "/" separators
+    /// * `decrypt` - An optional function which can be parsed in to decrypt raw bytes before they are returned to the calling layer
+    /// 
+    /// # Examples
     async fn read_data<F>(
         &self,
         path: &str,
@@ -82,13 +93,21 @@ impl StorageFacade for S3Facade {
         let bytes = data.body.collect().await?.into_bytes();
 
         if let Some(decrypt_fn) = decrypt {
-            println!("Encryption is currently not implemented, returning raw data.");
-            return Ok(Vec::from(bytes));
-        }
+            let cleartext = decrypt_fn(&bytes);
+            match cleartext {
+                Ok(bytes) => return Ok(bytes),
+                Err(e) => return Err(e.into())
+            }
+        };
 
         Ok(Vec::from(bytes))
     }
 
+    /// Writes a byteslice to an S3 bucket and returns result
+    /// 
+    /// This function does not take ownership to allow continued use of data within calling layers, though the tradeoff is that we have to make a Vector copy of the data internally within the function.
+    /// We do this as part of the encrypt operation if an encryption function has been parsed, and as part of the else if one has not.
+    /// As with the read_data function, this operation blocks a thread until the file write is complete. Whilst it works with large uploads, we intend to write a streaming or multi-part upload function for files measured in GBs and TBs.
     async fn write_data<F>(
         &self,
         path: &str,
@@ -98,12 +117,18 @@ impl StorageFacade for S3Facade {
     where
         F: Fn(&[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> + Send + Sync,
     {
+        let data = if let Some(encrypt_fn) = encrypt {
+encrypt_fn(data)?
+        } else {
+            data.to_vec()
+        };
+
         let upload = self
             .client
             .put_object()
             .bucket(&self.metadata.name)
             .key(path)
-            .body(ByteStream::from(data.to_vec()))
+            .body(ByteStream::from(data))
             .send()
             .await;
 

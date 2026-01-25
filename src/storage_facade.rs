@@ -56,6 +56,7 @@ pub trait StorageFacade {
         F: Fn(&[u8]) -> Result<Vec<u8>, Box<dyn Error + Send + Sync>> + Send + Sync;
 
     /// Lists files at a given directory path
+    /// 
     fn list_objects(
         &self,
         dir_path: &str,
