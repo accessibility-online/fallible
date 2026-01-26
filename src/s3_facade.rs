@@ -13,7 +13,7 @@
 // This way, callers don't need to care about or work with the platform specific features of each data store, but can implement high level instructions which will take advantage of them if required.
 use crate::storage_facade::{DataStoreId, StorageFacade, StoreMetadata};
 use aws_config as aws;
-use aws_sdk_s3::{self as s3, primitives::ByteStream};
+use aws_sdk_s3::{self as s3, error::SdkError, operation::list_objects_v2::{ListObjectsV2Error, ListObjectsV2Output}, primitives::ByteStream};
 use std::error::Error;
 
 /// Contains the client and metadata as fields
@@ -82,6 +82,8 @@ impl StorageFacade for S3Facade {
     where
         F: Fn(&[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> + Send + Sync,
     {
+// When ready, call get_file_metadata here to check size before reading
+
         let data = self
             .client
             .get_object()
@@ -105,7 +107,8 @@ impl StorageFacade for S3Facade {
 
     /// Writes a byteslice to an S3 bucket and returns result
     /// 
-    /// This function does not take ownership to allow continued use of data within calling layers, though the tradeoff is that we have to make a Vector copy of the data internally within the function.
+    /// This function does not take ownership, allowing callers to continue using data due to be written, if required.
+    /// The tradeoff is that this function adopts the slight overhead of copying referenced data into a vector owned by the function.
     /// We do this as part of the encrypt operation if an encryption function has been parsed, and as part of the else if one has not.
     /// As with the read_data function, this operation blocks a thread until the file write is complete. Whilst it works with large uploads, we intend to write a streaming or multi-part upload function for files measured in GBs and TBs.
     async fn write_data<F>(
@@ -140,11 +143,36 @@ encrypt_fn(data)?
         Ok(())
     }
 
+    /// Lists objects with a given prefix in an S3 bucket, returned in lexographical alphabetical order
+    /// 
+    /// Callers note that due to the nature of bucket storage, flat structure means this function will list all objects in all contained directories within the specified directory
+    /// For speed, we are electing to keep this as is for now, so you may need to filter your output lists.
+    /// either that, or it will save you a few extra cpu cycles for recursive listings down the tree.
     async fn list_objects(
         &self,
         dir_path: &str,
     ) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
-todo!()
+        let request = self.client.list_objects_v2()
+            .bucket(&self.metadata.name)
+            .prefix(dir_path)
+            .into_paginator()
+            .send();
+
+            // Takes each optional pagination object, and unwraps it into a vector of pagination objects.
+        let pages: Vec<ListObjectsV2Output> = request
+            .collect::<Result<Vec<ListObjectsV2Output>, SdkError<ListObjectsV2Error>>>()
+            .await?;
+
+        let mut keys: Vec<String> = Vec::new();
+        for p in pages {
+            for object in p.contents() {
+                if let Some(key) = object.key() {
+                    keys.push(key.to_string());
+                }
+            }
+        }
+        keys.sort();
+        Ok(keys)
     }
 
     async fn list_object_versions(
