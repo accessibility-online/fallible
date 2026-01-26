@@ -217,6 +217,6 @@ encrypt_fn(data)?
     }
 
     fn metadata(&self) -> &StoreMetadata {
-        todo!()
+        &self.metadata
     }
 }
