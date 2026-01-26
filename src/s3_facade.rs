@@ -213,7 +213,17 @@ encrypt_fn(data)?
     }
 
     async fn file_exists(&self, path: &str) -> bool {
-        todo!()
+        let request = self.client.head_object()
+        .bucket(&self.metadata.name)
+        .key(path)
+        .send()
+        .await;
+
+    if let Ok(_) = request {
+        true
+    } else {
+        false
+    }
     }
 
     fn metadata(&self) -> &StoreMetadata {
