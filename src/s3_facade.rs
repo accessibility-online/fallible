@@ -1,10 +1,10 @@
 // Provides abstractions for managing data in S3 Buckets
 //
 // This module provides abstractions for working with data in S3 buckets directly.
-// It conforms to the [`StorageFacade`] trait, and use of the trait methods above any module specific implementations is heavily encurraged, see below.
+// It conforms to the [`StorageFacade`] trait, and use of the trait methods above any module specific implementations is heavily encouraged, see below.
 // 
 // **NOTE:** This module assumes you have preexisting AWS assets, either via IAC or through manual creation.
-// While facades working on more traditional filesystems may be able to create their silos automatically, we liken the creation or distruction of a bucket in a similar light to creating or destroying a server.
+// While facades working on more traditional filesystems may be able to create their silos automatically, we liken the creation or destruction of a bucket in a similar light to creating or destroying a server.
 // Plus, there are additional considerations around bucket creation, such as public access blocks, policies around IAM access, and other details far beyond the scope of a module designed to abstract the storage and retrieval of data.
 // 
 // Where this module takes advantage of S3 specific features, it either does so within the bodies of public methods, or abstracts calls into private methods.
@@ -13,7 +13,7 @@
 // This way, callers don't need to care about or work with the platform specific features of each data store, but can implement high level instructions which will take advantage of them if required.
 use crate::storage_facade::{DataStoreId, StorageFacade, StoreMetadata};
 use aws_config as aws;
-use aws_sdk_s3::{self as s3, error::SdkError, operation::list_objects_v2::{ListObjectsV2Error, ListObjectsV2Output}, primitives::ByteStream};
+use aws_sdk_s3::{self as s3, error::SdkError, operation::{head_object::{HeadObjectError, HeadObjectOutput}, list_objects_v2::{ListObjectsV2Error, ListObjectsV2Output}}, primitives::ByteStream};
 use std::error::Error;
 
 /// Contains the client and metadata as fields
@@ -26,7 +26,7 @@ impl S3Facade {
     /// Constructor with bucket exists logic
     ///
     /// This constructor returns the S3Facade struct if the name argument matches the name of an existing s3 bucket.
-    /// We use head_bucket() as a lightweight call to check for bucket existance.
+    /// We use head_bucket() as a lightweight call to check for bucket existence.
     /// If the bucket exists, we return an S3Facade struct containing metadata useful to the calling layer. If not, we return an error, and will log specifics from here.
     /// In all cases, we want to return an arn for the bucket as part of the metadata, even if one is not provided by the sdk. This is because AWS is known to use bucket names and arns for different purposes, and we want to cover all bases.
     /// If the SDK is unable to return the ARN automatically, we construct it using String::format();
@@ -59,6 +59,16 @@ impl S3Facade {
                 Ok(facade)
             }
         }
+    }
+
+    async fn get_object_head(&self, path: &str) -> Result<HeadObjectOutput, SdkError<HeadObjectError>> {
+let head = self.client.head_object()
+        .bucket(&self.metadata.name)
+        .key(path)
+        .send()
+        .await?;
+
+Ok(head)
     }
 }
 
@@ -105,7 +115,7 @@ impl StorageFacade for S3Facade {
         Ok(Vec::from(bytes))
     }
 
-    /// Writes a byteslice to an S3 bucket and returns result
+    /// Writes a byte-slice to an S3 bucket and returns result
     /// 
     /// This function does not take ownership, allowing callers to continue using data due to be written, if required.
     /// The tradeoff is that this function adopts the slight overhead of copying referenced data into a vector owned by the function.
@@ -136,14 +146,14 @@ encrypt_fn(data)?
             .await;
 
         if let Err(e) = upload {
-            // ToDo put some error logging code here with traceing
+            // ToDo put some error logging code here with tracing
             return Err(e.into());
         }
 
         Ok(())
     }
 
-    /// Lists objects with a given prefix in an S3 bucket, returned in lexographical alphabetical order
+    /// Lists objects with a given prefix in an S3 bucket, returned in lexicographical alphabetical order
     /// 
     /// Callers note that due to the nature of bucket storage, flat structure means this function will list all objects in all contained directories within the specified directory
     /// For speed, we are electing to keep this as is for now, so you may need to filter your output lists.
@@ -179,6 +189,32 @@ encrypt_fn(data)?
         &self,
         file_path: &str,
     ) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
+        let request = self.client.list_object_versions()
+        .bucket(&self.metadata.name)
+        .prefix(file_path)
+        .send()
+        .await?;
+
+    let mut versions = request.versions.unwrap();
+    let mut next_key_marker = request.next_key_marker.unwrap_or_default();
+    let mut next_version_id_marker = request.next_version_id_marker.unwrap_or_default();
+    let mut truncated = request.is_truncated.unwrap_or(false);
+    while truncated {
+        let next_request = self.client.list_object_versions()
+        .bucket(&self.metadata.name)
+        .prefix(file_path)
+        .key_marker(&next_key_marker)
+        .version_id_marker(&next_version_id_marker)
+        .send()
+        .await?;
+
+        versions.extend_from_slice(next_request.versions());
+        next_key_marker = next_request.next_key_marker.unwrap_or_default();
+        next_version_id_marker = next_request.next_version_id_marker.unwrap_or_default();
+
+    truncated = next_request.is_truncated.unwrap_or(false);
+    }
+
         todo!()
     }
 
@@ -186,7 +222,13 @@ encrypt_fn(data)?
         &self,
         path: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        todo!()
+        let _request = self.client.delete_object()
+        .bucket(&self.metadata.name)
+        .key(path)
+        .send()
+        .await?;
+
+    Ok(())
     }
 
     async fn move_file(
@@ -194,32 +236,36 @@ encrypt_fn(data)?
         from: &str,
         to: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        todo!()
+self.copy_file(from, to).await?;
+        self.delete_file(from).await?;
+
+        Ok(())
     }
 
+    /// Copies a file from one location to another within the same bucket
+    /// 
+    /// The design choice was taken to keep copy operations within the same bucket, due to the nature of how the AWS SDK expects to work with the copy_source string.
+    /// We use the bucket name stored in the struct's metadata prepended to the copy source to fulfill this requirement.
+    /// Eventually, we should look at creating a migrate function which is able to not only work between two S3 buckets, but also be completely backend agnostic, using server side operations when possible and performing carefully managed copies between source and dest when not.
     async fn copy_file(
         &self,
         from: &str,
         to: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        todo!()
-    }
+        let _request = self.client.copy_object()
+        .copy_source(format!("{}/{}", &self.metadata.name, from))
+        .bucket(&self.metadata.name)
+.key(to)
+.send()
+.await?;
 
-    async fn get_file_metadata(
-        &self,
-        path: &str,
-    ) -> Result<std::fs::Metadata, Box<dyn std::error::Error + Send + Sync>> {
-        todo!()
+Ok(())
     }
 
     async fn file_exists(&self, path: &str) -> bool {
-        let request = self.client.head_object()
-        .bucket(&self.metadata.name)
-        .key(path)
-        .send()
-        .await;
+let check = self.get_object_head(path).await;
 
-    if let Ok(_) = request {
+    if let Ok(_) = check {
         true
     } else {
         false

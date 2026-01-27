@@ -2,7 +2,6 @@
 // More to follow ...
 
 use std::error::Error;
-use std::fs;
 use std::future::Future;
 use std::path::PathBuf;
 
@@ -87,12 +86,6 @@ pub trait StorageFacade {
         from: &str,
         to: &str,
     ) -> impl Future<Output = Result<(), Box<dyn Error + Send + Sync>>> + Send;
-
-    /// Returns a standard metadata object for a file at a given path
-    fn get_file_metadata(
-        &self,
-        path: &str,
-    ) -> impl Future<Output = Result<fs::Metadata, Box<dyn Error + Send + Sync>>> + Send;
 
     /// Checks if a file exists at a given path, cannot be used for directories
     fn file_exists(&self, path: &str) -> impl Future<Output = bool> + Send;
