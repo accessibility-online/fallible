@@ -2,7 +2,7 @@
 A Filesystem Abstraction Layer Library for Libre and Enterprise Projects
 
 ## Overview
-This library was originally conceived as part of Accessibility Online's Raise product, to keep everything as generic as we could for higher level components of the system wishing to store data. Geopolitical events in late 2025 - 2026, combined with heavy vendor lock-in for hyperscalers, meant we had to build our frameworks with a vendor-agnostic focus. Therefore, the philosophy is as follows:
+This library was originally conceived as part of Accessibility Online's Raise product, to keep everything as generic as we could for higher level components of the system wishing to store data. Geopolitical events in late 2025 - 2026, combined with heavy vendor lock-in for hyperscalers, meant we had to build our frameworks with a vendor-agnostic focus, because now they're all fallible. Therefore, the philosophy is as follows:
 * Traits First: Design interfaces which meet the needs of calling layers.
 * Modules Second: Build multiple modules which duplicate functionality across vendors
 * Private Methods Third: Methods for vendor-specific features should be kept private, and called from public methods required in traits.
