@@ -2,18 +2,26 @@
 //
 // This module provides abstractions for working with data in S3 buckets directly.
 // It conforms to the [`StorageFacade`] trait, and use of the trait methods above any module specific implementations is heavily encouraged, see below.
-// 
+//
 // **NOTE:** This module assumes you have preexisting AWS assets, either via IAC or through manual creation.
 // While facades working on more traditional filesystems may be able to create their silos automatically, we liken the creation or destruction of a bucket in a similar light to creating or destroying a server.
 // Plus, there are additional considerations around bucket creation, such as public access blocks, policies around IAM access, and other details far beyond the scope of a module designed to abstract the storage and retrieval of data.
-// 
+//
 // Where this module takes advantage of S3 specific features, it either does so within the bodies of public methods, or abstracts calls into private methods.
 // The idea being that if we use an S3 specific feature, it should be part of a process that can be considered agnostic to all structs which implement the StorageFacade trait.
 // for example, methods checking storage class of a file, and potentially triggering a move from deep archive to instant access, should be called as part of a process within a public method.
 // This way, callers don't need to care about or work with the platform specific features of each data store, but can implement high level instructions which will take advantage of them if required.
 use crate::storage_facade::{DataStoreId, StorageFacade, StoreMetadata};
 use aws_config as aws;
-use aws_sdk_s3::{self as s3, error::SdkError, operation::{head_object::{HeadObjectError, HeadObjectOutput}, list_objects_v2::{ListObjectsV2Error, ListObjectsV2Output}}, primitives::ByteStream};
+use aws_sdk_s3::{
+    self as s3,
+    error::SdkError,
+    operation::{
+        head_object::{HeadObjectError, HeadObjectOutput},
+        list_objects_v2::{ListObjectsV2Error, ListObjectsV2Output},
+    },
+    primitives::ByteStream,
+};
 use std::error::Error;
 
 /// Contains the client and metadata as fields
@@ -52,7 +60,7 @@ impl S3Facade {
                     metadata: StoreMetadata {
                         id: DataStoreId::S3(arn),
                         name: name.to_string(),
-                        description: description.to_string()
+                        description: description.to_string(),
                     },
                 };
 
@@ -61,28 +69,33 @@ impl S3Facade {
         }
     }
 
-    async fn get_object_head(&self, path: &str) -> Result<HeadObjectOutput, SdkError<HeadObjectError>> {
-let head = self.client.head_object()
-        .bucket(&self.metadata.name)
-        .key(path)
-        .send()
-        .await?;
+    async fn get_object_head(
+        &self,
+        path: &str,
+    ) -> Result<HeadObjectOutput, SdkError<HeadObjectError>> {
+        let head = self
+            .client
+            .head_object()
+            .bucket(&self.metadata.name)
+            .key(path)
+            .send()
+            .await?;
 
-Ok(head)
+        Ok(head)
     }
 }
 
 impl StorageFacade for S3Facade {
     /// Reads binary data from a file in an S3 Bucket
-    /// 
+    ///
     /// # Remarks
     /// Designed to read files from an s3 bucket and return raw binary data. This can be used on larger files, though it will block the thread until the file is read.
     /// We intend to implement streaming functions for larger files measured in GBs and TBs, after which a size limit will be imposed on the use of this function.
-    /// 
+    ///
     /// # Arguments
     /// * `path` - the path of the file to read, using forward slash "/" separators
     /// * `decrypt` - An optional function which can be parsed in to decrypt raw bytes before they are returned to the calling layer
-    /// 
+    ///
     /// # Examples
     async fn read_data<F>(
         &self,
@@ -92,7 +105,7 @@ impl StorageFacade for S3Facade {
     where
         F: Fn(&[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> + Send + Sync,
     {
-// When ready, call get_file_metadata here to check size before reading
+        // When ready, call get_file_metadata here to check size before reading
 
         let data = self
             .client
@@ -108,7 +121,7 @@ impl StorageFacade for S3Facade {
             let cleartext = decrypt_fn(&bytes);
             match cleartext {
                 Ok(bytes) => return Ok(bytes),
-                Err(e) => return Err(e.into())
+                Err(e) => return Err(e.into()),
             }
         };
 
@@ -116,7 +129,7 @@ impl StorageFacade for S3Facade {
     }
 
     /// Writes a byte-slice to an S3 bucket and returns result
-    /// 
+    ///
     /// This function does not take ownership, allowing callers to continue using data due to be written, if required.
     /// The tradeoff is that this function adopts the slight overhead of copying referenced data into a vector owned by the function.
     /// We do this as part of the encrypt operation if an encryption function has been parsed, and as part of the else if one has not.
@@ -131,7 +144,7 @@ impl StorageFacade for S3Facade {
         F: Fn(&[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> + Send + Sync,
     {
         let data = if let Some(encrypt_fn) = encrypt {
-encrypt_fn(data)?
+            encrypt_fn(data)?
         } else {
             data.to_vec()
         };
@@ -154,7 +167,7 @@ encrypt_fn(data)?
     }
 
     /// Lists objects with a given prefix in an S3 bucket, returned in lexicographical alphabetical order
-    /// 
+    ///
     /// Callers note that due to the nature of bucket storage, flat structure means this function will list all objects in all contained directories within the specified directory
     /// For speed, we are electing to keep this as is for now, so you may need to filter your output lists.
     /// either that, or it will save you a few extra cpu cycles for recursive listings down the tree.
@@ -162,13 +175,15 @@ encrypt_fn(data)?
         &self,
         dir_path: &str,
     ) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
-        let request = self.client.list_objects_v2()
+        let request = self
+            .client
+            .list_objects_v2()
             .bucket(&self.metadata.name)
             .prefix(dir_path)
             .into_paginator()
             .send();
 
-            // Takes each optional pagination object, and unwraps it into a vector of pagination objects.
+        // Takes each optional pagination object, and unwraps it into a vector of pagination objects.
         let pages: Vec<ListObjectsV2Output> = request
             .collect::<Result<Vec<ListObjectsV2Output>, SdkError<ListObjectsV2Error>>>()
             .await?;
@@ -189,31 +204,35 @@ encrypt_fn(data)?
         &self,
         file_path: &str,
     ) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
-        let request = self.client.list_object_versions()
-        .bucket(&self.metadata.name)
-        .prefix(file_path)
-        .send()
-        .await?;
+        let request = self
+            .client
+            .list_object_versions()
+            .bucket(&self.metadata.name)
+            .prefix(file_path)
+            .send()
+            .await?;
 
-    let mut versions = request.versions.unwrap();
-    let mut next_key_marker = request.next_key_marker.unwrap_or_default();
-    let mut next_version_id_marker = request.next_version_id_marker.unwrap_or_default();
-    let mut truncated = request.is_truncated.unwrap_or(false);
-    while truncated {
-        let next_request = self.client.list_object_versions()
-        .bucket(&self.metadata.name)
-        .prefix(file_path)
-        .key_marker(&next_key_marker)
-        .version_id_marker(&next_version_id_marker)
-        .send()
-        .await?;
+        let mut versions = request.versions.unwrap();
+        let mut next_key_marker = request.next_key_marker.unwrap_or_default();
+        let mut next_version_id_marker = request.next_version_id_marker.unwrap_or_default();
+        let mut truncated = request.is_truncated.unwrap_or(false);
+        while truncated {
+            let next_request = self
+                .client
+                .list_object_versions()
+                .bucket(&self.metadata.name)
+                .prefix(file_path)
+                .key_marker(&next_key_marker)
+                .version_id_marker(&next_version_id_marker)
+                .send()
+                .await?;
 
-        versions.extend_from_slice(next_request.versions());
-        next_key_marker = next_request.next_key_marker.unwrap_or_default();
-        next_version_id_marker = next_request.next_version_id_marker.unwrap_or_default();
+            versions.extend_from_slice(next_request.versions());
+            next_key_marker = next_request.next_key_marker.unwrap_or_default();
+            next_version_id_marker = next_request.next_version_id_marker.unwrap_or_default();
 
-    truncated = next_request.is_truncated.unwrap_or(false);
-    }
+            truncated = next_request.is_truncated.unwrap_or(false);
+        }
 
         todo!()
     }
@@ -222,13 +241,15 @@ encrypt_fn(data)?
         &self,
         path: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let _request = self.client.delete_object()
-        .bucket(&self.metadata.name)
-        .key(path)
-        .send()
-        .await?;
+        let _request = self
+            .client
+            .delete_object()
+            .bucket(&self.metadata.name)
+            .key(path)
+            .send()
+            .await?;
 
-    Ok(())
+        Ok(())
     }
 
     async fn move_file(
@@ -236,14 +257,14 @@ encrypt_fn(data)?
         from: &str,
         to: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-self.copy_file(from, to).await?;
+        self.copy_file(from, to).await?;
         self.delete_file(from).await?;
 
         Ok(())
     }
 
     /// Copies a file from one location to another within the same bucket
-    /// 
+    ///
     /// The design choice was taken to keep copy operations within the same bucket, due to the nature of how the AWS SDK expects to work with the copy_source string.
     /// We use the bucket name stored in the struct's metadata prepended to the copy source to fulfill this requirement.
     /// Eventually, we should look at creating a migrate function which is able to not only work between two S3 buckets, but also be completely backend agnostic, using server side operations when possible and performing carefully managed copies between source and dest when not.
@@ -252,24 +273,22 @@ self.copy_file(from, to).await?;
         from: &str,
         to: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let _request = self.client.copy_object()
-        .copy_source(format!("{}/{}", &self.metadata.name, from))
-        .bucket(&self.metadata.name)
-.key(to)
-.send()
-.await?;
+        let _request = self
+            .client
+            .copy_object()
+            .copy_source(format!("{}/{}", &self.metadata.name, from))
+            .bucket(&self.metadata.name)
+            .key(to)
+            .send()
+            .await?;
 
-Ok(())
+        Ok(())
     }
 
     async fn file_exists(&self, path: &str) -> bool {
-let check = self.get_object_head(path).await;
+        let check = self.get_object_head(path).await;
 
-    if let Ok(_) = check {
-        true
-    } else {
-        false
-    }
+        if let Ok(_) = check { true } else { false }
     }
 
     fn metadata(&self) -> &StoreMetadata {
