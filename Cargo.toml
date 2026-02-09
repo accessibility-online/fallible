@@ -11,3 +11,7 @@ crate-type = ["rlib", "cdylib"]
 aws-config = "1.8.12"
 aws-sdk-s3 = "1.120.0"
 tracing = "0.1.44"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+uuid = { version = "1", features = ["v4"] }
